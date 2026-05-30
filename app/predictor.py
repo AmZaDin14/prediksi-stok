@@ -144,7 +144,7 @@ def predict_product(
                 depletion_days = None
                 depletion_date = ">30 hari"
             else:
-                depletion_days = int(crossing.index[0]) + 1
+                depletion_days = int(crossing.index[0] - recent.index[0]) + 1
                 dep_date = date.today() + timedelta(days=depletion_days)
                 depletion_date = dep_date.isoformat()
 

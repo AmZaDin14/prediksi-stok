@@ -71,6 +71,9 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
     """Handle incoming WhatsApp messages."""
     body = msg.body.strip().lower()
 
+    if body in ("help", "bantuan", ""):
+        return _handle_help()
+
     if body == "cek stok":
         return _handle_cek_stok()
 
@@ -87,6 +90,19 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
 
 
 # --- Handlers ----------------------------------------------------------
+
+_HELP_TEXT = (
+    "Perintah yang tersedia:\n"
+    "• terjual [produk] [jumlah] — Catat penjualan\n"
+    "  Contoh: terjual gula 5\n\n"
+    "• cek stok — Lihat status stok semua produk\n\n"
+    "• help/bantuan — Tampilkan pesan ini"
+)
+
+
+def _handle_help() -> WebhookResponse:
+    return WebhookResponse(status="ok", response=_HELP_TEXT)
+
 
 def _handle_cek_stok() -> WebhookResponse:
     """Build status overview for all products using prediction engine."""

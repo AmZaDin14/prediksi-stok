@@ -632,6 +632,7 @@ dependencies = [
     { name = "prophet" },
     { name = "pydantic" },
     { name = "pytest" },
+    { name = "python-dotenv" },
     { name = "streamlit" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -643,6 +644,7 @@ requires-dist = [
     { name = "prophet" },
     { name = "pydantic" },
     { name = "pytest" },
+    { name = "python-dotenv" },
     { name = "streamlit" },
     { name = "uvicorn", extras = ["standard"] },
 ]
