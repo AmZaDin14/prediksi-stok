@@ -40,16 +40,17 @@ const CHROME_PATHS = [
 const CHROME_PATH = CHROME_PATHS.find(p => fs.existsSync(p)) || undefined;
 
 // --- WhatsApp client -------------------------------------------------------
-const client = new Client({
+const CLIENT = new Client({
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
         executablePath: CHROME_PATH,
+        userDataDir: path.join(DATA_DIR, 'wwebjs_profile'),
     },
 });
 
 // --- QR event --------------------------------------------------------------
-client.on('qr', async (qr) => {
+CLIENT.on('qr', async (qr) => {
     console.log('QR Code received. Scan with WhatsApp:');
 
     // ASCII QR to console
@@ -72,8 +73,8 @@ client.on('qr', async (qr) => {
 });
 
 // --- Ready event -----------------------------------------------------------
-client.on('ready', () => {
-    const phoneNumber = client.info.wid.user;
+CLIENT.on('ready', () => {
+    const phoneNumber = CLIENT.info.wid.user;
     const displayPhone = `+${phoneNumber}`;
     console.log('WhatsApp bot connected:', displayPhone);
     writeConnectionStatus('connected', displayPhone);
@@ -83,16 +84,16 @@ client.on('ready', () => {
 });
 
 // --- Disconnected event (auto-reconnect) -----------------------------------
-client.on('disconnected', async (reason) => {
+CLIENT.on('disconnected', async (reason) => {
     console.log('WhatsApp bot disconnected:', reason);
     writeConnectionStatus('disconnected');
     console.log('Attempting reconnection in 5 seconds...');
     await new Promise(resolve => setTimeout(resolve, 5000));
-    client.initialize();
+    CLIENT.initialize();
 });
 
 // --- Message event ---------------------------------------------------------
-client.on('message', async (msg) => {
+CLIENT.on('message', async (msg) => {
     if (!msg.body || msg.body.trim() === '') {
         return;
     }
@@ -135,7 +136,7 @@ async function pollOutgoing() {
         const messages = await response.json();
         for (const msg of messages) {
             try {
-                await client.sendMessage(msg.recipient, msg.body);
+                await CLIENT.sendMessage(msg.recipient, msg.body);
                 console.log(`Sent outgoing message to ${msg.recipient}: ${msg.body.substring(0, 50)}...`);
             } catch (err) {
                 console.error('Failed to send outgoing message:', err.message);
@@ -147,4 +148,4 @@ async function pollOutgoing() {
 }
 
 // --- Start client ----------------------------------------------------------
-client.initialize();
+CLIENT.initialize();
