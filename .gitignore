@@ -24,3 +24,6 @@ data/backups/
 # Generated WhatsApp files
 data/qr.png
 data/connection_status.json
+
+# Generated model files
+data/models/*.pkl
