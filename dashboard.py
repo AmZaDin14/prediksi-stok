@@ -14,6 +14,7 @@ from pathlib import Path
 import streamlit as st
 
 from app.data import get_expected_stock, record_sale
+from app.predictor import predict_product
 from app.synthetic_data import generate_synthetic_data
 
 # ---------------------------------------------------------------------------
@@ -105,21 +106,6 @@ def _regenerate_synthetic_product(product_name: str, product_config: dict) -> No
         record_sale(str(DB_PATH), row["product_name"], row["quantity"], row["reported_at"])
 
 
-def get_stock_display(product_name: str, product_info: dict) -> str:
-    """Get formatted stock string for a product.
-
-    Tries SQLite via get_expected_stock first; falls back to initial_stock
-    from products.json.
-    """
-    expected = get_expected_stock(str(DB_PATH), product_name)
-    if expected is not None:
-        qty = expected
-    else:
-        qty = product_info["initial_stock"]
-    unit = product_info["unit"]
-    return f"{qty:,.0f} {unit}"
-
-
 # ---------------------------------------------------------------------------
 # Page
 # ---------------------------------------------------------------------------
@@ -140,22 +126,68 @@ products = load_products()
 st.title("Dashboard Stok")
 st.markdown("Ringkasan stok semua produk.")
 
-# Build table data from products.json
+# Build enriched table with predictions
 rows = []
 for name, info in products.items():
-    stock_display = get_stock_display(name, info)
-    rows.append(
-        {
-            "Produk": name,
-            "Stok Saat Ini": stock_display,
-            "Satuan": info["unit"],
-        }
-    )
+    stock = get_expected_stock(str(DB_PATH), name)
+    if stock is None:
+        stock = float(info["initial_stock"])
+    unit = info["unit"]
 
-# Sort by product name
+    pred = predict_product(str(DB_PATH), info, name, models_dir=str(MODELS_DIR))
+    stock_display = f"{stock:,.0f} {unit}"
+
+    # Trend indicator
+    trend_map = {"up": "\U0001f53c", "down": "\U0001f53d", "stable": "→"}
+    trend_chr = trend_map.get(pred.trend, "")
+
+    # Phase badge
+    phase_map = {"bootstrap": "B", "blend": "BL", "mature": "M"}
+    phase_chr = phase_map.get(pred.phase, "?")
+
+    # Confidence display
+    conf_map = {"low": "\U0001f534 Low", "medium": "\U0001f7e1 Med", "high": "\U0001f7e2 High"}
+    conf_chr = conf_map.get(pred.confidence, "?")
+
+    # Urgency color class
+    urgent = pred.depletion_days is not None and pred.depletion_days <= 3
+    warning = pred.depletion_days is not None and pred.depletion_days <= 7
+
+    if urgent:
+        status = "\U0001f534 Urgent"
+    elif warning:
+        status = "\U0001f7e1 Warning"
+    elif pred.fallback_active:
+        status = "\U0001f535 Estimasi"
+    else:
+        status = "\U0001f7e2 Aman"
+
+    depletion_display = pred.depletion_date if pred.depletion_days else ">30 hari"
+
+    rows.append({
+        "Produk": name,
+        "Stok": stock_display,
+        "Prediksi Habis": depletion_display,
+        "Tren": trend_chr,
+        "Fase": phase_chr,
+        "Status": status,
+    })
+
 rows.sort(key=lambda r: r["Produk"].lower())
 
-st.dataframe(rows, use_container_width=True, hide_index=True)
+st.dataframe(
+    rows,
+    column_config={
+        "Produk": st.column_config.TextColumn("Produk"),
+        "Stok": st.column_config.TextColumn("Stok Saat Ini"),
+        "Prediksi Habis": st.column_config.TextColumn("Prediksi Habis"),
+        "Tren": st.column_config.TextColumn("Tren", width="small"),
+        "Fase": st.column_config.TextColumn("Fase", width="small"),
+        "Status": st.column_config.TextColumn("Status"),
+    },
+    use_container_width=True,
+    hide_index=True,
+)
 
 # ---------------------------------------------------------------------------
 # Add product

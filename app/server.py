@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from app.data import get_daily_sales, get_expected_stock, record_sale
 from app.parser import parse_sales_message
+from app.predictor import PredictionResult, predict_product, train_all_products
 
 # --- Config from environment -------------------------------------------
 DB_PATH = os.environ.get("DB_PATH", "data/prediksi.db")
@@ -84,38 +85,29 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
 # --- Handlers ----------------------------------------------------------
 
 def _handle_cek_stok() -> WebhookResponse:
-    """Build status overview for all products.
-
-    Uses linear projection (owner-estimated daily average) as placeholder
-    since the prediction engine does not exist yet.
-    """
+    """Build status overview for all products using prediction engine."""
     products = _load_products()
-    today = date.today()
     lines: list[str] = []
 
     for name, attrs in products.items():
         unit = attrs["unit"]
-        initial_stock = attrs["initial_stock"]
-        depletion_window = attrs["depletion_window_days"]
-
-        # Current stock from last confirmation minus sales since then
         stock = get_expected_stock(DB_PATH, name)
         if stock is None:
-            stock = float(initial_stock)
+            stock = float(attrs["initial_stock"])
 
-        # Owner-estimated daily consumption rate
-        daily_avg = initial_stock / depletion_window if depletion_window > 0 else 0
+        pred = predict_product(DB_PATH, attrs, name)
 
-        if daily_avg > 0 and stock > 0:
-            days_until = int(stock / daily_avg)
-            depletion_date = today + timedelta(days=days_until)
-            lines.append(
-                f"{name}: ~{stock:.0f} {unit} "
-                f"(habis dalam ~{days_until} hari, "
-                f"prediksi: {depletion_date.isoformat()})"
-            )
-        else:
-            lines.append(f"{name}: ~{stock:.0f} {unit} (data tidak mencukupi)")
+        icon = "   " if pred.confidence == "high" else " ?" if pred.confidence == "medium" else "??"
+        trend_chr = {"up": "\U0001f53c", "down": "\U0001f53d", "stable": "→"}.get(pred.trend, "")
+
+        dep = pred.depletion_date if pred.depletion_days else "N/A"
+        phase_chr = {"bootstrap": "B", "blend": "BL", "mature": "M"}.get(pred.phase, "?")
+
+        lines.append(
+            f"{icon} {name}: {stock:.0f} {unit} "
+            f"| habis: {dep} {trend_chr}"
+            f" | {phase_chr}/{pred.confidence}"
+        )
 
     return WebhookResponse(status="ok", response="\n".join(lines))
 
@@ -162,3 +154,26 @@ def _handle_terjual(raw_text: str) -> WebhookResponse:
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# --- Prediction endpoints ------------------------------------------------
+
+
+@app.get("/predict/{product_name}")
+async def predict_single(product_name: str) -> PredictionResult:
+    """Get depletion prediction for a single product."""
+    products = _load_products()
+    if product_name not in products:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Product '{product_name}' not found")
+    return predict_product(DB_PATH, products[product_name], product_name)
+
+
+@app.get("/predict")
+async def predict_all() -> dict[str, PredictionResult]:
+    """Get depletion predictions for all products."""
+    products = _load_products()
+    results: dict[str, PredictionResult] = {}
+    for name, config in products.items():
+        results[name] = predict_product(DB_PATH, config, name)
+    return results
