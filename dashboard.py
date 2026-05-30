@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -125,6 +126,49 @@ products = load_products()
 # Page header
 st.title("Dashboard Stok")
 st.markdown("Ringkasan stok semua produk.")
+
+# ---------------------------------------------------------------------------
+# WhatsApp Status
+# ---------------------------------------------------------------------------
+st.markdown("### Status WhatsApp")
+status_path = Path(__file__).parent / "data" / "connection_status.json"
+qr_path = Path(__file__).parent / "data" / "qr.png"
+
+if status_path.exists():
+    with open(status_path) as f:
+        conn_status = json.load(f)
+    wa_status = conn_status.get("status", "disconnected")
+
+    if wa_status == "connected":
+        st.success("WhatsApp Terhubung")
+        phone = conn_status.get("phone_number")
+        if phone:
+            st.caption(f"Nomor: {phone}")
+        last = conn_status.get("last_connected")
+        if last:
+            st.caption(f"Terakhir terhubung: {last}")
+    elif wa_status == "connecting":
+        st.warning("Menghubungkan...")
+        if qr_path.exists():
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                st.image(str(qr_path), width=250)
+        else:
+            st.text("QR code belum tersedia")
+        st.caption("Scan QR code dengan WhatsApp Anda untuk menghubungkan")
+        time.sleep(5)
+        st.rerun()
+    else:
+        st.error("WhatsApp Terputus")
+        last = conn_status.get("last_connected")
+        if last:
+            st.caption(f"Terakhir terhubung: {last}")
+else:
+    st.info("WhatsApp bot belum dijalankan")
+
+# ---------------------------------------------------------------------------
+# Product table
+# ---------------------------------------------------------------------------
 
 # Build enriched table with predictions
 rows = []
