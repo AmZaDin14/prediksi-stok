@@ -13,6 +13,7 @@ dependencies = [
     "pydantic",
     "pytest",
     "python-dotenv",
+    "streamlit-autorefresh>=1.0.1",
 ]
 
 [tool.pytest.ini_options]

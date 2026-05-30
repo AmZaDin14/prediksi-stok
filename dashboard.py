@@ -13,10 +13,10 @@ load_dotenv()
 import json
 import os
 import sqlite3
-import time
 from pathlib import Path
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 
 from app.data import get_expected_stock, record_sale
 from app.predictor import predict_product
@@ -124,6 +124,9 @@ st.set_page_config(
 if not _check_password():
     st.stop()
 
+# Auto-refresh every 10 seconds
+st_autorefresh(interval=10000, key="dashboard_autorefresh")
+
 # Load product catalog
 products = load_products()
 
@@ -160,8 +163,6 @@ if status_path.exists():
         else:
             st.text("QR code belum tersedia")
         st.caption("Scan QR code dengan WhatsApp Anda untuk menghubungkan")
-        time.sleep(5)
-        st.rerun()
     else:
         st.error("WhatsApp Terputus")
         last = conn_status.get("last_connected")
