@@ -30,11 +30,19 @@ function writeConnectionStatus(status, phoneNumber = null) {
 // --- Initial status --------------------------------------------------------
 writeConnectionStatus('disconnected');
 
+// --- Chrome path (pick the best available) ----------------------------------
+const CHROME_PATHS = [
+    '/home/amri/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome',
+    '/home/amri/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome',
+];
+const CHROME_PATH = CHROME_PATHS.find(p => fs.existsSync(p)) || undefined;
+
 // --- WhatsApp client -------------------------------------------------------
 const client = new Client({
     puppeteer: {
         headless: true,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: CHROME_PATH,
     },
 });
 
