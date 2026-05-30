@@ -12,6 +12,7 @@ dependencies = [
     "apscheduler",
     "pydantic",
     "pytest",
+    "python-dotenv",
 ]
 
 [tool.pytest.ini_options]

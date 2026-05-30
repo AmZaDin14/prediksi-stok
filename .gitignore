@@ -27,3 +27,6 @@ data/connection_status.json
 
 # Generated model files
 data/models/*.pkl
+
+# Environment variables (secrets, local config)
+.env

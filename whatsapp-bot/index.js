@@ -1,3 +1,5 @@
+require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env') });
+
 const { Client } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');

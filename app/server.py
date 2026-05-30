@@ -6,6 +6,10 @@ stock status queries (``cek stok``), and unknown command fallback.
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import json
 import os
 from datetime import date, datetime, timedelta, timezone
