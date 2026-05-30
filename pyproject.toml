@@ -13,3 +13,8 @@ dependencies = [
     "pydantic",
     "pytest",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (e.g., prophet training)",
+]
