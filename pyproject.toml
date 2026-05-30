@@ -1,7 +1,15 @@
 [project]
 name = "prediksi-stok"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-based inventory prediction system for stores/warehouses"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "prophet",
+    "streamlit",
+    "apscheduler",
+    "pydantic",
+    "pytest",
+]

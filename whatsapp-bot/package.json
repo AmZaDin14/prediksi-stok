@@ -1,0 +1,9 @@
+{
+  "name": "prediksi-stok-whatsapp",
+  "version": "0.1.0",
+  "description": "WhatsApp connectivity microservice for Prediksi Stok",
+  "main": "index.js",
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0"
+  }
+}

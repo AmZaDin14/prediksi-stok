@@ -1,0 +1,51 @@
+{
+  "Gula": {
+    "initial_stock": 30,
+    "unit": "sak",
+    "depletion_window_days": 7,
+    "shelf_life_days": 365,
+    "supplier_lead_time_days": 2
+  },
+  "Minyak": {
+    "initial_stock": 1000,
+    "unit": "dus",
+    "depletion_window_days": 14,
+    "shelf_life_days": 365,
+    "supplier_lead_time_days": 3
+  },
+  "Tepung": {
+    "initial_stock": 300,
+    "unit": "dus",
+    "depletion_window_days": 14,
+    "shelf_life_days": 180,
+    "supplier_lead_time_days": 3
+  },
+  "Beras": {
+    "initial_stock": 3000,
+    "unit": "kg",
+    "depletion_window_days": 7,
+    "shelf_life_days": 180,
+    "supplier_lead_time_days": 2
+  },
+  "Aqua": {
+    "initial_stock": 300,
+    "unit": "dus",
+    "depletion_window_days": 14,
+    "shelf_life_days": 365,
+    "supplier_lead_time_days": 3
+  },
+  "Roti hitam manis": {
+    "initial_stock": 35,
+    "unit": "dus",
+    "depletion_window_days": 30,
+    "shelf_life_days": 30,
+    "supplier_lead_time_days": 2
+  },
+  "Garam": {
+    "initial_stock": 500,
+    "unit": "pak",
+    "depletion_window_days": 7,
+    "shelf_life_days": 365,
+    "supplier_lead_time_days": 2
+  }
+}
