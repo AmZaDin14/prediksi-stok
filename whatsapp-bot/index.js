@@ -67,12 +67,18 @@ client.on('ready', () => {
     const displayPhone = `+${phoneNumber}`;
     console.log('WhatsApp bot connected:', displayPhone);
     writeConnectionStatus('connected', displayPhone);
+
+    // Start polling outgoing queue every 30 seconds
+    setInterval(pollOutgoing, 30000);
 });
 
-// --- Disconnected event ----------------------------------------------------
-client.on('disconnected', (reason) => {
+// --- Disconnected event (auto-reconnect) -----------------------------------
+client.on('disconnected', async (reason) => {
     console.log('WhatsApp bot disconnected:', reason);
     writeConnectionStatus('disconnected');
+    console.log('Attempting reconnection in 5 seconds...');
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    client.initialize();
 });
 
 // --- Message event ---------------------------------------------------------
@@ -104,6 +110,31 @@ client.on('message', async (msg) => {
         await msg.reply('Maaf, tidak dapat terhubung ke server.');
     }
 });
+
+// --- Poll outgoing queue ---------------------------------------------------
+async function pollOutgoing() {
+    try {
+        const ownerNumber = process.env.OWNER_NUMBER;
+        if (!ownerNumber) {
+            return; // No owner number configured, skip polling
+        }
+
+        const response = await fetch(`http://localhost:8765/outgoing?recipient=${encodeURIComponent(ownerNumber)}`);
+        if (!response.ok) return;
+
+        const messages = await response.json();
+        for (const msg of messages) {
+            try {
+                await client.sendMessage(msg.recipient, msg.body);
+                console.log(`Sent outgoing message to ${msg.recipient}: ${msg.body.substring(0, 50)}...`);
+            } catch (err) {
+                console.error('Failed to send outgoing message:', err.message);
+            }
+        }
+    } catch (err) {
+        console.error('Error polling outgoing queue:', err.message);
+    }
+}
 
 // --- Start client ----------------------------------------------------------
 client.initialize();
