@@ -178,9 +178,7 @@ else:
 # Build enriched table with predictions
 rows = []
 for name, info in products.items():
-    stock = get_expected_stock(str(DB_PATH), name)
-    if stock is None:
-        stock = float(info["initial_stock"])
+    stock = get_expected_stock(str(DB_PATH), name, initial_stock=float(info["initial_stock"]))
     unit = info["unit"]
 
     pred = predict_product(str(DB_PATH), info, name, models_dir=str(MODELS_DIR))

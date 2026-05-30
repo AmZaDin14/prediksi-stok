@@ -188,21 +188,41 @@ class TestExpectedStockWithConfirmation:
         # 30 - (5 + 3) = 22
         assert result == 22.0
 
-    def test_sales_on_confirmation_day_not_deducted(self, db_path):
-        """Sales on the same day as confirmation are not deducted."""
+    def test_sales_before_confirmation_not_deducted(self, db_path):
+        """Sales before the confirmation timestamp are not deducted."""
         _init_schema(db_path)
+        # Sale at 10:00
+        record_sale(db_path, "Gula", 5.0, "2026-05-29T10:00:00")
+        # Confirmation at 17:00 (after the sale)
         conn = sqlite3.connect(db_path)
         conn.execute(
             "INSERT INTO stock_snapshots (product_name, quantity, snapshot_date, is_confirmation) VALUES (?, ?, ?, 1)",
-            ("Gula", 30.0, "2026-05-29"),
+            ("Gula", 30.0, "2026-05-29T17:00:00"),
         )
         conn.commit()
         conn.close()
 
-        # Sale on the same day as the confirmation (should not be deducted)
-        record_sale(db_path, "Gula", 5.0, "2026-05-29T10:00:00")
         result = get_expected_stock(db_path, "Gula")
+        # Sale at 10:00 is before confirmation at 17:00 — not deducted
         assert result == 30.0
+
+    def test_sales_after_confirmation_deducted(self, db_path):
+        """Sales after the confirmation timestamp are deducted."""
+        _init_schema(db_path)
+        # Confirmation at 10:00
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO stock_snapshots (product_name, quantity, snapshot_date, is_confirmation) VALUES (?, ?, ?, 1)",
+            ("Gula", 30.0, "2026-05-29T10:00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        # Sale at 17:00 (after confirmation)
+        record_sale(db_path, "Gula", 5.0, "2026-05-29T17:00:00")
+        result = get_expected_stock(db_path, "Gula")
+        # 30 - 5 = 25
+        assert result == 25.0
 
     def test_multiple_confirmations_uses_latest(self, db_path):
         """Only the most recent confirmation is used."""

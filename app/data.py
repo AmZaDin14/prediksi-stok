@@ -134,25 +134,27 @@ def get_last_confirmation(db_path: str, product_name: str) -> dict | None:
         conn.close()
 
 
-def get_expected_stock(db_path: str, product_name: str) -> float | None:
+def get_expected_stock(db_path: str, product_name: str, initial_stock: float | None = None) -> float | None:
     """Compute expected current stock for a product.
 
     Expected stock is defined as::
 
         last_confirmed_quantity - sum_of_sales_since_last_confirmation
 
-    If no confirmation exists for the product, returns ``None`` (unknown).
+    If no confirmation exists and *initial_stock* is provided, returns
+    ``initial_stock - total_sales_all_time`` (real-time running estimate).
+    If no confirmation and no *initial_stock*, returns ``None``.
 
     Args:
         db_path: Path to the SQLite database file.
         product_name: Name of the product.
+        initial_stock: Default starting stock when no confirmation exists.
 
     Returns:
-        Expected stock level, or None if no confirmation exists.
+        Expected stock level, or None if unknown.
     """
     conn = _get_connection(db_path)
     try:
-        # Get the most recent confirmed stock snapshot
         last_conf = conn.execute(
             """
             SELECT quantity, snapshot_date
@@ -165,17 +167,23 @@ def get_expected_stock(db_path: str, product_name: str) -> float | None:
         ).fetchone()
 
         if last_conf is None:
+            if initial_stock is not None:
+                total_sales = conn.execute(
+                    "SELECT COALESCE(SUM(quantity), 0) FROM sales_reports WHERE product_name = ?",
+                    (product_name,),
+                ).fetchone()[0]
+                return initial_stock - total_sales
             return None
 
         last_qty = last_conf["quantity"]
         last_date = last_conf["snapshot_date"]
 
-        # Sum of all sales reported AFTER the confirmation date
+        # Sum of all sales AFTER the confirmation timestamp
         total_sales_row = conn.execute(
             """
             SELECT COALESCE(SUM(quantity), 0) AS total
             FROM sales_reports
-            WHERE product_name = ? AND date(reported_at) > ?
+            WHERE product_name = ? AND reported_at > ?
             """,
             (product_name, last_date),
         ).fetchone()
@@ -243,19 +251,19 @@ def record_confirmation(db_path: str, product_name: str, quantity: float) -> Non
     """Record an end-of-day stock confirmation.
 
     Inserts a row into ``stock_snapshots`` with ``is_confirmation=1`` and
-    ``snapshot_date`` set to today's date.
+    ``snapshot_date`` set to the current datetime (ISO format).
 
     Args:
         db_path: Path to the SQLite database file.
         product_name: Name of the product.
         quantity: Confirmed shelf stock quantity.
     """
-    today = date.today().isoformat()
+    now = datetime.now().isoformat()
     conn = _get_connection(db_path)
     try:
         conn.execute(
             "INSERT INTO stock_snapshots (product_name, quantity, snapshot_date, is_confirmation) VALUES (?, ?, ?, 1)",
-            (product_name, quantity, today),
+            (product_name, quantity, now),
         )
         conn.commit()
     finally:

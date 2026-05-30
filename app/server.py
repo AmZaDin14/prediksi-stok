@@ -111,9 +111,7 @@ def _handle_cek_stok() -> WebhookResponse:
 
     for name, attrs in products.items():
         unit = attrs["unit"]
-        stock = get_expected_stock(DB_PATH, name)
-        if stock is None:
-            stock = float(attrs["initial_stock"])
+        stock = get_expected_stock(DB_PATH, name, initial_stock=float(attrs["initial_stock"]))
 
         pred = predict_product(DB_PATH, attrs, name)
 

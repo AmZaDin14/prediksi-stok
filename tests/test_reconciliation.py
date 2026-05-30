@@ -133,7 +133,7 @@ class TestConfirmAndReconcile:
         _ensure_tables(sqlite3.connect(db_path))
         # Seed a confirmation from yesterday so today's sale is deducted.
         _seed_confirmation(db_path, "Gula", 30.0, "2026-05-29")
-        record_sale(db_path, "Gula", 5.0, "2026-05-30T10:00:00")
+        record_sale(db_path, "Gula", 5.0, "2026-05-30T06:00:00")
         # Expected = 30 - 5 = 25, actual = 24 -> discrepancy = -1 (within 10%)
         result = confirm_and_reconcile(db_path, "Gula", 24.0)
         assert result.product_name == "Gula"
