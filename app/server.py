@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.data import get_daily_sales, get_expected_stock, record_sale
+from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, queue_outgoing_message, record_sale
 from app.parser import parse_sales_message
 from app.predictor import PredictionResult, predict_product, train_all_products
 
@@ -177,3 +177,9 @@ async def predict_all() -> dict[str, PredictionResult]:
     for name, config in products.items():
         results[name] = predict_product(DB_PATH, config, name)
     return results
+
+
+@app.get("/outgoing")
+async def get_outgoing(recipient: str | None = None) -> list[dict]:
+    """Get pending outgoing WhatsApp messages (marks them sent)."""
+    return get_pending_outgoing(DB_PATH, recipient)

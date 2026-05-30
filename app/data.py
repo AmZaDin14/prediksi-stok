@@ -27,6 +27,14 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
             snapshot_date TEXT NOT NULL,
             is_confirmation INTEGER NOT NULL DEFAULT 0
         );
+
+        CREATE TABLE IF NOT EXISTS outgoing_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            recipient TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            sent INTEGER NOT NULL DEFAULT 0
+        );
     """)
 
 
@@ -175,6 +183,58 @@ def get_expected_stock(db_path: str, product_name: str) -> float | None:
         total_sales = total_sales_row["total"]
         return last_qty - total_sales
 
+    finally:
+        conn.close()
+
+
+def queue_outgoing_message(db_path: str, recipient: str, body: str) -> None:
+    """Insert an outgoing message to be sent via WhatsApp.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        recipient: The recipient phone number.
+        body: The message body text.
+    """
+    conn = _get_connection(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO outgoing_messages (recipient, body, created_at) VALUES (?, ?, ?)",
+            (recipient, body, datetime.now().isoformat()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_pending_outgoing(db_path: str, recipient: str | None = None) -> list[dict]:
+    """Fetch pending outgoing messages and mark them as sent.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        recipient: Optional recipient filter. If provided, only messages
+            for that recipient are returned.
+
+    Returns:
+        List of dicts with keys ``id``, ``recipient``, ``body``, ``created_at``.
+    """
+    conn = _get_connection(db_path)
+    try:
+        if recipient:
+            rows = conn.execute(
+                "SELECT id, recipient, body, created_at FROM outgoing_messages WHERE sent = 0 AND recipient = ? ORDER BY id ASC LIMIT 10",
+                (recipient,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id, recipient, body, created_at FROM outgoing_messages WHERE sent = 0 ORDER BY id ASC LIMIT 10",
+            ).fetchall()
+        # Mark as sent
+        ids = [r["id"] for r in rows]
+        if ids:
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(f"UPDATE outgoing_messages SET sent = 1 WHERE id IN ({placeholders})", ids)
+            conn.commit()
+        return [dict(r) for r in rows]
     finally:
         conn.close()
 
