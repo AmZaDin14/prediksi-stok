@@ -30,3 +30,4 @@ data/models/*.pkl
 
 # Environment variables (secrets, local config)
 .env
+.wwebjs_cache/
