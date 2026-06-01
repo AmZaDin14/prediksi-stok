@@ -142,13 +142,13 @@ def get_expected_stock(db_path: str, product_name: str, initial_stock: float | N
         last_confirmed_quantity - sum_of_sales_since_last_confirmation
 
     If no confirmation exists and *initial_stock* is provided, returns
-    ``initial_stock - total_sales_all_time`` (real-time running estimate).
-    If no confirmation and no *initial_stock*, returns ``None``.
+    ``initial_stock - today_sales`` so the dashboard shows real-time daily
+    decrements even before the first EOD confirmation.
 
     Args:
         db_path: Path to the SQLite database file.
         product_name: Name of the product.
-        initial_stock: Default starting stock when no confirmation exists.
+        initial_stock: Starting stock used before first confirmation.
 
     Returns:
         Expected stock level, or None if unknown.
@@ -168,9 +168,10 @@ def get_expected_stock(db_path: str, product_name: str, initial_stock: float | N
 
         if last_conf is None:
             if initial_stock is not None:
+                today = date.today().isoformat()
                 total_sales = conn.execute(
-                    "SELECT COALESCE(SUM(quantity), 0) FROM sales_reports WHERE product_name = ?",
-                    (product_name,),
+                    "SELECT COALESCE(SUM(quantity), 0) FROM sales_reports WHERE product_name = ? AND date(reported_at) = ?",
+                    (product_name, today),
                 ).fetchone()[0]
                 return initial_stock - total_sales
             return None

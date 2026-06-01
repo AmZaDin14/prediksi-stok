@@ -182,6 +182,42 @@ def predict_product(
     )
 
 
+def get_forecast_data(
+    db_path: str,
+    product_name: str,
+    current_stock: float | None = None,
+    models_dir: str | None = None,
+) -> list[dict]:
+    """Return 30-day Prophet forecast for charting.
+
+    Returns list of ``{ds, sisa_stok}`` dicts (remaining stock declining
+    toward zero), or empty list if no model available.
+
+    *current_stock* is the starting stock level.  If omitted, stock is
+    fetched from ``products.json``.
+    """
+    md = models_dir or DEFAULT_MODELS_DIR
+    model_path = os.path.join(md, f"{product_name}.pkl")
+    if not os.path.exists(model_path) or os.path.getsize(model_path) == 0:
+        return []
+    try:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+        future = model.make_future_dataframe(periods=30, freq="D")
+        forecast = model.predict(future)
+        recent = forecast.tail(30)
+        if current_stock is None:
+            current_stock = 0
+        cum_sales = recent["yhat"].cumsum()
+        result = []
+        for i in range(len(recent)):
+            remaining = max(0.0, float(current_stock - cum_sales.iloc[i]))
+            result.append({"ds": recent.iloc[i]["ds"].isoformat(), "sisa_stok": remaining})
+        return result
+    except Exception:
+        return []
+
+
 def train_all_products(
     db_path: str,
     products_file: str,

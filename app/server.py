@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, queue_outgoing_message, record_sale
+from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, queue_outgoing_message, record_confirmation, record_sale
 from app.parser import parse_sales_message
 from app.predictor import PredictionResult, predict_product, train_all_products
 
@@ -80,11 +80,15 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
     if body.startswith("terjual"):
         return _handle_terjual(msg.body)
 
+    if body.startswith("restock"):
+        return _handle_restock(msg.body)
+
     return WebhookResponse(
         status="error",
         response=(
             "Maaf, perintah tidak dikenal. Kirim 'terjual [produk] [jumlah]' "
-            "untuk mencatat penjualan, atau 'cek stok' untuk status."
+            "untuk mencatat penjualan, 'restock [produk] [jumlah]' "
+            "untuk mencatat restok, atau 'cek stok' untuk status."
         ),
     )
 
@@ -95,6 +99,8 @@ _HELP_TEXT = (
     "Perintah yang tersedia:\n"
     "• terjual [produk] [jumlah] — Catat penjualan\n"
     "  Contoh: terjual gula 5\n\n"
+    "• restock [produk] [jumlah] — Catat restok (tambah stok)\n"
+    "  Contoh: restock aqua 200\n\n"
     "• cek stok — Lihat status stok semua produk\n\n"
     "• help/bantuan — Tampilkan pesan ini"
 )
@@ -168,6 +174,50 @@ def _handle_terjual(raw_text: str) -> WebhookResponse:
 
     return WebhookResponse(status="ok", response="OK. " + ", ".join(sale_parts))
 
+
+def _handle_restock(raw_text: str) -> WebhookResponse:
+    """Process a ``restock`` command (e.g. ``restock aqua 200``)."""
+    parts = raw_text.strip().split()
+    if len(parts) < 3:
+        return WebhookResponse(
+            status="error",
+            response="Format: restock [produk] [jumlah]. Contoh: restock aqua 200",
+        )
+
+    product_input = parts[1].lower()
+    try:
+        qty = float(parts[2])
+    except ValueError:
+        return WebhookResponse(
+            status="error",
+            response="Jumlah harus angka. Contoh: restock aqua 200",
+        )
+
+    if qty <= 0:
+        return WebhookResponse(status="error", response="Jumlah harus lebih dari 0.")
+
+    valid_products = _get_valid_products()
+    matched = [p for p in valid_products if p.lower() == product_input]
+    if not matched:
+        available = ", ".join(sorted(p.lower() for p in valid_products))
+        return WebhookResponse(
+            status="error",
+            response=f"Produk '{parts[1]}' tidak dikenal. Produk: {available}",
+        )
+
+    product_name = matched[0]
+    products = _load_products()
+    unit = products.get(product_name, {}).get("unit", "")
+
+    current = get_expected_stock(DB_PATH, product_name)
+    new_stock = (current or 0) + qty
+    record_confirmation(DB_PATH, product_name, new_stock)
+
+    unit_display = f" {unit}" if unit else ""
+    return WebhookResponse(
+        status="ok",
+        response=f"OK. {product_name} di-restok {qty:.0f}{unit_display}. Stok sekarang: {new_stock:.0f}{unit_display}.",
+    )
 
 @app.get("/health")
 async def health():

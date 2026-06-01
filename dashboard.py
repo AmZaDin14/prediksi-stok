@@ -13,13 +13,16 @@ load_dotenv()
 import json
 import os
 import sqlite3
+import time
+from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-from app.data import get_expected_stock, record_sale
-from app.predictor import predict_product
+from app.data import get_daily_sales, get_expected_stock, record_sale
+from app.predictor import get_forecast_data, predict_product, train_all_products
 from app.synthetic_data import generate_synthetic_data
 
 # ---------------------------------------------------------------------------
@@ -36,25 +39,36 @@ DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin123")
 
 
 def _check_password() -> bool:
-    """Check password via query param or text input.
+    """Check password via query param, session state, or text input.
 
+    Survives page refreshes via ``auth_until`` query param (30 min expiry).
     Returns True if authenticated.
     """
-    # Allow passing password as query parameter (e.g. ?password=admin123)
+    # 1) Expiring session via query param (survives page refresh)
+    auth_until = st.query_params.get("auth_until")
+    if auth_until:
+        try:
+            val = auth_until[0] if isinstance(auth_until, list) else auth_until
+            if time.time() < float(val):
+                return True
+        except (ValueError, TypeError):
+            pass
+
+    # 2) Allow passing password as query parameter (e.g. ?password=admin123)
     query_pass = st.query_params.get("password", [None])
     if isinstance(query_pass, list):
         query_pass = query_pass[0] if query_pass else None
-
     if query_pass == DASHBOARD_PASSWORD:
+        st.query_params["auth_until"] = str(time.time() + 1800)
         return True
 
-    # Fall back to text input widget
+    # 3) In-memory session state (fast, but lost on page refresh)
     if "authenticated" not in st.session_state:
         st.session_state.authenticated = False
-
     if st.session_state.authenticated:
         return True
 
+    # 4) Login form
     with st.container():
         st.title("Prediksi Stok")
         st.markdown("Masukkan password untuk mengakses dashboard.")
@@ -62,6 +76,7 @@ def _check_password() -> bool:
         if password:
             if password == DASHBOARD_PASSWORD:
                 st.session_state.authenticated = True
+                st.query_params["auth_until"] = str(time.time() + 1800)
                 st.rerun()
             else:
                 st.error("Password salah.")
@@ -172,6 +187,16 @@ else:
     st.info("WhatsApp bot belum dijalankan")
 
 # ---------------------------------------------------------------------------
+# Train models if missing
+# ---------------------------------------------------------------------------
+if "models_trained" not in st.session_state:
+    missing = [name for name in products if not (MODELS_DIR / f"{name}.pkl").exists()]
+    if missing:
+        with st.spinner(f"Melatih model untuk {len(missing)} produk..."):
+            train_all_products(str(DB_PATH), str(PRODUCTS_PATH), models_dir=str(MODELS_DIR))
+    st.session_state.models_trained = True
+
+# ---------------------------------------------------------------------------
 # Product table
 # ---------------------------------------------------------------------------
 
@@ -235,6 +260,43 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
 )
+
+# ---------------------------------------------------------------------------
+# Charts
+# ---------------------------------------------------------------------------
+st.markdown("### Grafik")
+
+prod_list = sorted(products.keys())
+sel = st.selectbox("Pilih produk", prod_list, key="chart_select")
+
+if sel:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.caption("Penjualan Harian (30 hari terakhir)")
+        end = date.today()
+        start = end - timedelta(days=30)
+        sales = get_daily_sales(str(DB_PATH), sel, start.isoformat(), end.isoformat())
+        if sales:
+            sdf = pd.DataFrame(sales)
+            sdf["sale_date"] = pd.to_datetime(sdf["sale_date"])
+            st.bar_chart(sdf.set_index("sale_date")["total_quantity"])
+        else:
+            st.info("Belum ada data penjualan")
+
+    with col2:
+        st.caption("Prediksi Stok (30 hari ke depan)")
+        current = get_expected_stock(str(DB_PATH), sel, initial_stock=float(products[sel]["initial_stock"]))
+        if current is not None:
+            fdata = get_forecast_data(str(DB_PATH), sel, current_stock=current, models_dir=str(MODELS_DIR))
+            if fdata:
+                fdf = pd.DataFrame(fdata).rename(columns={"ds": "date", "sisa_stok": "Sisa Stok"})
+                fdf["date"] = pd.to_datetime(fdf["date"])
+                st.line_chart(fdf.set_index("date"))
+        else:
+            info = products[sel]
+            daily_avg = float(info["initial_stock"]) / float(info["depletion_window_days"])
+            st.info(f"Model belum dilatih. Estimasi: habis ~{int(info['initial_stock'] / daily_avg) if daily_avg > 0 else 'N/A'} hari")
 
 # ---------------------------------------------------------------------------
 # Add product
