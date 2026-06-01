@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.parser import ParseResult, parse_sales_message
+from app.parser import (
+    ConfirmationParseResult,
+    ParseResult,
+    parse_confirmation_message,
+    parse_sales_message,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -315,3 +320,66 @@ class TestEdgeCases:
         result = parse("terjual GULA 5 MinYaK 10")
         assert ("gula", 5.0) in result.sales
         assert ("minyak", 10.0) in result.sales
+
+
+# ---------------------------------------------------------------------------
+# parse_confirmation_message
+# ---------------------------------------------------------------------------
+
+
+class TestParseConfirmationMessage:
+    """parse_confirmation_message parses "cek stok <product> <qty>" correctly."""
+
+    def test_single_product(self):
+        result = parse_confirmation_message("cek stok gula 25", VALID_PRODUCTS)
+        assert result.confirmations == [("gula", 25.0)]
+        assert result.errors == []
+
+    def test_multi_product_comma(self):
+        result = parse_confirmation_message("cek stok gula 25, minyak 900", VALID_PRODUCTS)
+        assert ("gula", 25.0) in result.confirmations
+        assert ("minyak", 900.0) in result.confirmations
+        assert len(result.confirmations) == 2
+        assert result.errors == []
+
+    def test_unknown_product(self):
+        result = parse_confirmation_message("cek stok invalid 10", VALID_PRODUCTS)
+        assert result.confirmations == []
+        assert len(result.errors) == 1
+
+    def test_missing_quantity(self):
+        result = parse_confirmation_message("cek stok gula", VALID_PRODUCTS)
+        assert result.confirmations == []
+        assert len(result.errors) == 1
+
+    def test_negative_quantity(self):
+        result = parse_confirmation_message("cek stok gula -5", VALID_PRODUCTS)
+        assert result.confirmations == []
+        assert len(result.errors) == 1
+
+    def test_capitalised_product(self):
+        result = parse_confirmation_message("cek stok GULA 25", VALID_PRODUCTS)
+        assert result.confirmations == [("gula", 25.0)]
+        assert result.errors == []
+
+    def test_missing_prefix(self):
+        result = parse_confirmation_message("laporkan stok gula 25", VALID_PRODUCTS)
+        assert result.confirmations == []
+        assert len(result.errors) == 1
+
+    def test_multi_product_space_only(self):
+        result = parse_confirmation_message("cek stok gula 25 minyak 900", VALID_PRODUCTS)
+        assert ("gula", 25.0) in result.confirmations
+        assert ("minyak", 900.0) in result.confirmations
+        assert len(result.confirmations) == 2
+        assert result.errors == []
+
+    def test_two_word_product(self):
+        result = parse_confirmation_message("cek stok roti hitam manis 5", VALID_PRODUCTS)
+        assert result.confirmations == [("roti hitam manis", 5.0)]
+        assert result.errors == []
+
+    def test_zero_quantity_valid(self):
+        result = parse_confirmation_message("cek stok gula 0", VALID_PRODUCTS)
+        assert result.confirmations == [("gula", 0.0)]
+        assert result.errors == []

@@ -18,8 +18,9 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, queue_outgoing_message, record_confirmation, record_sale
-from app.parser import parse_sales_message
+from app.parser import parse_confirmation_message, parse_sales_message
 from app.predictor import PredictionResult, predict_product, train_all_products
+from app.reconciliation import reconcile
 
 # --- Config from environment -------------------------------------------
 DB_PATH = os.environ.get("DB_PATH", "data/prediksi.db")
@@ -74,8 +75,10 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
     if body in ("help", "bantuan", ""):
         return _handle_help()
 
-    if body == "cek stok":
-        return _handle_cek_stok()
+    if body.startswith("cek stok"):
+        if body == "cek stok":
+            return _handle_cek_stok()
+        return _handle_cek_stok_confirm(msg.body)
 
     if body.startswith("terjual"):
         return _handle_terjual(msg.body)
@@ -102,6 +105,8 @@ _HELP_TEXT = (
     "• restock [produk] [jumlah] — Catat restok (tambah stok)\n"
     "  Contoh: restock aqua 200\n\n"
     "• cek stok — Lihat status stok semua produk\n\n"
+    "• cek stok [produk] [jumlah] — Laporkan stok aktual\n"
+    "  Contoh: cek stok gula 25, minyak 900\n\n"
     "• help/bantuan — Tampilkan pesan ini"
 )
 
@@ -218,6 +223,60 @@ def _handle_restock(raw_text: str) -> WebhookResponse:
         status="ok",
         response=f"OK. {product_name} di-restok {qty:.0f}{unit_display}. Stok sekarang: {new_stock:.0f}{unit_display}.",
     )
+
+
+def _handle_cek_stok_confirm(raw_text: str) -> WebhookResponse:
+    """Process a ``cek stok <product> <qty>`` confirmation message.
+
+    Records stock confirmation and runs reconciliation for each product.
+    """
+    valid_products = _get_valid_products()
+    result = parse_confirmation_message(raw_text, valid_products)
+
+    if result.errors:
+        return WebhookResponse(
+            status="error",
+            response="; ".join(result.errors),
+        )
+
+    if not result.confirmations:
+        return WebhookResponse(
+            status="error",
+            response="Format: cek stok [produk] [jumlah]. Contoh: cek stok gula 25",
+        )
+
+    products = _load_products()
+    parts: list[str] = []
+
+    for product_name, qty in result.confirmations:
+        unit = products.get(product_name, {}).get("unit", "")
+
+        # Reconcile first (before recording), then record confirmation
+        unit_display = f" {unit}" if unit else ""
+        rec_result = reconcile(DB_PATH, product_name, qty)
+        record_confirmation(DB_PATH, product_name, qty)
+
+        if rec_result.is_match:
+            parts.append(f"{product_name}: {qty:.0f}{unit_display} (sesuai)")
+        elif rec_result.shrinkage_detected:
+            parts.append(
+                f"{product_name}: {qty:.0f}{unit_display} "
+                f"(susut {abs(rec_result.discrepancy):.0f}{unit_display}, "
+                f"{abs(rec_result.discrepancy_pct)*100:.0f}%)"
+            )
+        elif rec_result.restock_detected:
+            parts.append(
+                f"{product_name}: {qty:.0f}{unit_display} "
+                f"(restok {rec_result.discrepancy:.0f}{unit_display})"
+            )
+
+    # Retrain all models after confirmation
+    try:
+        train_all_products(DB_PATH, PRODUCTS_FILE)
+    except Exception:
+        pass
+
+    return WebhookResponse(status="ok", response="Stok diperbarui. " + "; ".join(parts))
 
 @app.get("/health")
 async def health():

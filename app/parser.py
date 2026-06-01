@@ -26,6 +26,19 @@ class ParseResult:
     needs_confirmation: list[tuple[str, float]] = field(default_factory=list)
 
 
+@dataclass
+class ConfirmationParseResult:
+    """Result of parsing a "cek stok" confirmation message.
+
+    Attributes:
+        confirmations: List of (product_name, quantity) tuples that passed validation.
+        errors: Human-readable error messages for invalid entries.
+    """
+
+    confirmations: list[tuple[str, float]] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+
 # Regex to match a product+quantity pair.
 # Captures product name (word characters and spaces) then quantity.
 # Quantity may be negative, integer, or decimal.
@@ -220,5 +233,100 @@ def parse_sales_message(
             result.needs_confirmation.append((canonical_name, qty))
         else:
             result.sales.append((canonical_name, qty))
+
+    return result
+
+
+
+def parse_confirmation_message(
+    raw_text: str,
+    valid_products: list[str],
+) -> ConfirmationParseResult:
+    """Parse a "cek stok" confirmation message.
+
+    Handles format: "cek stok <product> <qty>[, <product> <qty>...]"
+
+    Args:
+        raw_text: The raw message text from WhatsApp.
+        valid_products: List of recognised product names.
+
+    Returns:
+        A ConfirmationParseResult with validated confirmations and errors.
+    """
+    result = ConfirmationParseResult()
+    text = _normalise_text(raw_text)
+
+    prefix = "cek stok"
+    if not text.startswith(prefix):
+        result.errors.append(
+            'Message must start with "cek stok" '
+            "(e.g. 'cek stok gula 25, minyak 900')."
+        )
+        return result
+
+    body = text[len(prefix) :].strip()
+    if not body:
+        result.errors.append(
+            'No products found after "cek stok". '
+            "Expected format: "
+            '"cek stok <product> <qty>[, <product> <qty>...]"'
+        )
+        return result
+
+    pairs = _split_pairs(body)
+    valid_lower = {p.lower(): p for p in valid_products}
+
+    for pair in pairs:
+        pair = pair.strip()
+        if not pair:
+            continue
+
+        m = _PAIR_RE.fullmatch(pair)
+        if not m:
+            if re.match(r"^[\w\s]+$", pair) and not re.search(r"\d", pair):
+                result.errors.append(
+                    f'Missing quantity for "{pair}". '
+                    'Format: "cek stok <product> <qty>"'
+                )
+            elif _NUMBER_RE.match(pair):
+                result.errors.append(
+                    f'Missing product name for quantity "{pair}". '
+                    'Format: "cek stok <product> <qty>"'
+                )
+            else:
+                result.errors.append(
+                    f'Could not parse "{pair}". '
+                    'Format: "cek stok <product> <qty>"'
+                )
+            continue
+
+        name_raw = m.group("product").strip()
+        qty_raw = m.group("qty")
+
+        if not name_raw:
+            result.errors.append(
+                f'Missing product name for quantity "{qty_raw}".'
+            )
+            continue
+
+        name_lower = name_raw.lower()
+        if name_lower not in valid_lower:
+            available = ", ".join(sorted(valid_products))
+            result.errors.append(
+                f'Unknown product "{name_raw}". Available products: {available}'
+            )
+            continue
+
+        canonical_name = valid_lower[name_lower]
+        qty = float(qty_raw)
+
+        if qty < 0:
+            result.errors.append(
+                f"Negative quantity ({qty}) for "
+                f'"{canonical_name}" is not allowed.'
+            )
+            continue
+
+        result.confirmations.append((canonical_name, qty))
 
     return result
