@@ -183,6 +183,22 @@ if status_path.exists():
         last = conn_status.get("last_connected")
         if last:
             st.caption(f"Terakhir terhubung: {last}")
+
+    # Re-pair button
+    col_a, col_b = st.columns([1, 4])
+    with col_a:
+        if st.button(":arrows_counterclockwise:  Pasang Ulang", type="secondary",
+                     disabled=(wa_status == "connecting")):
+            import requests as req
+            try:
+                r = req.post("http://localhost:8765/restart-bot", timeout=5)
+                if r.ok:
+                    st.success("Sinyal restart dikirim. Scan QR code yang baru.")
+                    st.rerun()
+                else:
+                    st.error(f"Gagal: HTTP {r.status_code}")
+            except Exception as exc:
+                st.error(f"Gagal: {exc}")
 else:
     st.info("WhatsApp bot belum dijalankan")
 

@@ -10,7 +10,11 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(PROJECT_ROOT, 'data');
 const CONNECTION_STATUS_PATH = path.join(DATA_DIR, 'connection_status.json');
 const QR_PATH = path.join(DATA_DIR, 'qr.png');
+const RESTART_SIGNAL_PATH = path.join(DATA_DIR, 'restart_signal.txt');
 const WEBHOOK_URL = 'http://localhost:8765/webhook';
+
+// --- Bot start time (for restart signal comparison) -------------------------
+const BOT_START_TIME = Date.now();
 
 // --- Ensure data directory exists ------------------------------------------
 if (!fs.existsSync(DATA_DIR)) {
@@ -124,6 +128,23 @@ CLIENT.on('message', async (msg) => {
 
 // --- Poll outgoing queue ---------------------------------------------------
 async function pollOutgoing() {
+    // Check for restart signal first
+    try {
+        if (fs.existsSync(RESTART_SIGNAL_PATH)) {
+            const signalTime = new Date(fs.readFileSync(RESTART_SIGNAL_PATH, 'utf8').trim()).getTime();
+            if (signalTime > BOT_START_TIME) {
+                console.log('Restart signal received. Restarting WhatsApp client...');
+                fs.unlinkSync(RESTART_SIGNAL_PATH);
+                writeConnectionStatus('disconnected');
+                await CLIENT.destroy();
+                CLIENT.initialize();
+                return;
+            }
+        }
+    } catch (err) {
+        console.error('Error checking restart signal:', err.message);
+    }
+
     try {
         const ownerNumber = process.env.OWNER_NUMBER;
         if (!ownerNumber) {

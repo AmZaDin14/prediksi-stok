@@ -310,3 +310,13 @@ async def predict_all() -> dict[str, PredictionResult]:
 async def get_outgoing(recipient: str | None = None) -> list[dict]:
     """Get pending outgoing WhatsApp messages (marks them sent)."""
     return get_pending_outgoing(DB_PATH, recipient)
+
+
+@app.post("/restart-bot")
+async def restart_bot() -> dict:
+    """Signal the WhatsApp bot to restart and generate a fresh QR code."""
+    signal_path = os.path.join(os.path.dirname(DB_PATH), "restart_signal.txt")
+    os.makedirs(os.path.dirname(signal_path), exist_ok=True)
+    with open(signal_path, "w") as f:
+        f.write(datetime.now(timezone.utc).isoformat())
+    return {"status": "ok", "message": "Restart signal sent to WhatsApp bot."}
