@@ -184,26 +184,27 @@ _CUSTOM_CSS = """
 
 def _render_header() -> None:
     """Render Teknokrat-branded header."""
-    logo_html = ""
-    if LOGO_PATH.exists():
-        import base64
-        b64 = base64.b64encode(LOGO_PATH.read_bytes()).decode()
-        logo_html = f'<img src="data:image/png;base64,{b64}" alt="Teknokrat Logo">'
+    # Render CSS once
+    st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
 
-    st.markdown(
-        f"""
-        {_CUSTOM_CSS}
-        <div class="header-banner">
-            {logo_html}
+    # Header layout with logo + text columns
+    cols = st.columns([1, 5])
+    with cols[0]:
+        if LOGO_PATH.exists():
+            st.image(str(LOGO_PATH), width=64)
+        else:
+            st.markdown("📦")
+    with cols[1]:
+        st.markdown(
+            """
             <div class="header-text">
                 <h1>Sistem Prediksi Stok</h1>
                 <p class="subtitle">AI-based Inventory Prediction System</p>
                 <p class="univ">Universitas Teknokrat Indonesia</p>
             </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------------------
