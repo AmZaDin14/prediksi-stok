@@ -178,6 +178,14 @@ _CUSTOM_CSS = """
     /* ----- Table styling ----- */
     .dataframe {font-size: 0.85rem;}
     .stDataFrame {border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden;}
+
+    /* ----- Stock table ----- */
+    .stock-table {width: 100%; border-collapse: collapse; font-size: 0.85rem;}
+    .stock-table th {background: #003D7A; color: white; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600;}
+    .stock-table td {padding: 0.5rem 0.8rem; border-bottom: 1px solid #E5E7EB;}
+    .stock-table tr:hover {background: #F3F4F6;}
+    .bar-bg {background: #E5E7EB; border-radius: 10px; height: 8px; width: 100px; overflow: hidden;}
+    .bar-fill {height: 8px; border-radius: 10px;}
         /* ----- Dark mode overrides ----- */
         @media (prefers-color-scheme: dark) {
             .stApp {background-color: #0E1117 !important;}
@@ -192,8 +200,7 @@ _CUSTOM_CSS = """
             .team-member .name {color: #E5E7EB;}
             .team-member .npm {color: #9CA3AF;}
             .app-footer {border-top-color: #374151; color: #6B7280;}
-            .stock-table td {border-bottom-color: #374151;}
-            .stock-table tr:hover {background: #1F2937;}
+
             .stDataFrame {border-color: #374151;}
             .wa-connected {background: #064E3B; color: #6EE7B7; border-color: #065F46;}
             .wa-disconnected {background: #7F1D1D; color: #FCA5A5; border-color: #991B1B;}
@@ -202,6 +209,9 @@ _CUSTOM_CSS = """
             .badge-warning {background: #78350F; color: #FDE68A;}
             .badge-urgent {background: #7F1D1D; color: #FCA5A5;}
             .badge-estimasi {background: #1E3A5F; color: #93C5FD;}
+            .bar-bg {background: #374151 !important;}
+            .stock-table td {border-bottom-color: #374151;}
+            .stock-table tr:hover {background: #1F2937;}
         }
 </style>
 """
@@ -460,17 +470,8 @@ with tab_dash:
     rows.sort(key=lambda r: r["Produk"].lower())
 
     st.markdown("### 📋 Status Stok")
-    st.markdown(
-        """
-        <style>
-        .stock-table {width: 100%; border-collapse: collapse; font-size: 0.85rem;}
-        .stock-table th {background: #003D7A; color: white; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600;}
-        .stock-table td {padding: 0.5rem 0.8rem; border-bottom: 1px solid #E5E7EB;}
-        .stock-table tr:hover {background: #F3F4F6;}
-        .bar-bg {background: #E5E7EB; border-radius: 10px; height: 8px; width: 100px; overflow: hidden;}
-        .bar-fill {height: 8px; border-radius: 10px;}
-        </style>
-        <table class="stock-table">
+    table_html = (
+        """<table class="stock-table">
             <thead>
                 <tr>
                     <th>Produk</th>
@@ -482,31 +483,24 @@ with tab_dash:
                     <th>Status</th>
                 </tr>
             </thead>
-            <tbody>
-        """,
-        unsafe_allow_html=True,
+            <tbody>"""
     )
     for r in rows:
         pct = r["Sisa %"]
         bar_color = "#EF4444" if pct < 25 else "#F59E0B" if pct < 50 else "#10B981"
-        stk = r["Stok"]
-        dep = r["Prediksi Habis"]
-        tr = r["Tren"]
-        ph = r["Fase"]
-        sts = r["Status"]
-        st.markdown(
+        table_html += (
             f"<tr>"
             f"<td><strong>{r['Produk']}</strong></td>"
-            f"<td>{stk}</td>"
+            f"<td>{r['Stok']}</td>"
             f"<td><div class='bar-bg'><div class='bar-fill' style='width:{pct:.0f}%;background:{bar_color}'></div></div></td>"
-            f"<td>{dep}</td>"
-            f"<td>{tr}</td>"
-            f"<td>{ph}</td>"
-            f"<td>{sts}</td>"
-            f"</tr>",
-            unsafe_allow_html=True,
+            f"<td>{r['Prediksi Habis']}</td>"
+            f"<td>{r['Tren']}</td>"
+            f"<td>{r['Fase']}</td>"
+            f"<td>{r['Status']}</td>"
+            f"</tr>"
         )
-    st.markdown("</tbody></table>", unsafe_allow_html=True)
+    table_html += "</tbody></table>"
+    st.markdown(table_html, unsafe_allow_html=True)
 
 # ===========================================================================
 # TAB 2 — CHARTS
