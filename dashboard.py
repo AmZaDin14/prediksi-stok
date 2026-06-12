@@ -178,6 +178,31 @@ _CUSTOM_CSS = """
     /* ----- Table styling ----- */
     .dataframe {font-size: 0.85rem;}
     .stDataFrame {border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden;}
+        /* ----- Dark mode overrides ----- */
+        @media (prefers-color-scheme: dark) {
+            .stApp {background-color: #0E1117 !important;}
+            .kpi-card {background: #1E2028; box-shadow: 0 2px 8px rgba(0,0,0,0.3);}
+            .kpi-card .kpi-value {color: #60A5FA;}
+            .kpi-card .kpi-label {color: #9CA3AF;}
+            .kpi-card.warning .kpi-value {color: #FBBF24;}
+            .kpi-card.danger .kpi-value {color: #F87171;}
+            .about-card {background: #1E2028; box-shadow: 0 2px 8px rgba(0,0,0,0.3);}
+            .about-card h3 {color: #60A5FA;}
+            .team-member {border-bottom-color: #374151;}
+            .team-member .name {color: #E5E7EB;}
+            .team-member .npm {color: #9CA3AF;}
+            .app-footer {border-top-color: #374151; color: #6B7280;}
+            .stock-table td {border-bottom-color: #374151;}
+            .stock-table tr:hover {background: #1F2937;}
+            .stDataFrame {border-color: #374151;}
+            .wa-connected {background: #064E3B; color: #6EE7B7; border-color: #065F46;}
+            .wa-disconnected {background: #7F1D1D; color: #FCA5A5; border-color: #991B1B;}
+            .wa-connecting {background: #78350F; color: #FDE68A; border-color: #92400E;}
+            .badge-aman {background: #064E3B; color: #6EE7B7;}
+            .badge-warning {background: #78350F; color: #FDE68A;}
+            .badge-urgent {background: #7F1D1D; color: #FCA5A5;}
+            .badge-estimasi {background: #1E3A5F; color: #93C5FD;}
+        }
 </style>
 """
 
