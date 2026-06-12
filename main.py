@@ -15,9 +15,9 @@ from pathlib import Path
 import uvicorn
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.data import queue_outgoing_message
-from app.predictor import predict_product
-from app.server import app
+from app.data import get_expected_stock, get_products_confirmed_today, queue_outgoing_message, record_confirmation
+from app.predictor import predict_product, train_specific_products
+from app.server import app, _build_eod_reminder_body
 
 OWNER_NUMBER = os.environ.get("OWNER_NUMBER", "")
 
@@ -73,13 +73,79 @@ def _depletion_alert_job() -> None:
 
 
 def _eod_reminder_job() -> None:
-    """Send end-of-day stock confirmation reminder."""
+    """Send end-of-day stock confirmation reminder with expected stock."""
     if not OWNER_NUMBER:
         return
     db_path = "data/prediksi.db"
-    msg = "\U0001f514 Waktunya cek stok! Kirim 'cek stok' untuk mengetahui status stok hari ini."
+    msg = _build_eod_reminder_body()
     queue_outgoing_message(db_path, OWNER_NUMBER, msg)
     print(f"[{datetime.now().isoformat()}] EOD reminder queued")
+
+
+def _eod_escalation_job() -> None:
+    """Second reminder at 21:30 if products are still unconfirmed."""
+    if not OWNER_NUMBER:
+        return
+    db_path = "data/prediksi.db"
+    with open("products.json") as f:
+        products = json.load(f)
+
+    confirmed_today = set(get_products_confirmed_today(db_path))
+    missing = [name for name in products if name not in confirmed_today]
+
+    if not missing:
+        return
+
+    product_lines = ", ".join(missing)
+    msg = (
+        f"⚠️ Stok BELUM dikonfirmasi untuk: {product_lines}.\n\n"
+        "Kirim \"ok\" jika semua sesuai,\n"
+        "atau kirim: cek stok [produk] [jumlah]"
+    )
+    queue_outgoing_message(db_path, OWNER_NUMBER, msg)
+    print(f"[{datetime.now().isoformat()}] EOD escalation queued for: {product_lines}")
+
+
+def _eod_auto_confirm_job() -> None:
+    """Auto-confirm all unconfirmed products at 23:00 with expected stock."""
+    if not OWNER_NUMBER:
+        return
+    db_path = "data/prediksi.db"
+    with open("products.json") as f:
+        products = json.load(f)
+
+    confirmed_today = set(get_products_confirmed_today(db_path))
+    auto_confirmed: list[str] = []
+    retrain_names: list[str] = []
+
+    for name, attrs in products.items():
+        if name in confirmed_today:
+            continue
+        stock = get_expected_stock(db_path, name, initial_stock=float(attrs["initial_stock"]))
+        if stock is not None:
+            record_confirmation(db_path, name, stock)
+            auto_confirmed.append(f"✓ {name}: {stock:.0f} {attrs['unit']} (expected)")
+            retrain_names.append(name)
+        else:
+            auto_confirmed.append(f"❌ {name}: stok tidak diketahui")
+
+    if not auto_confirmed:
+        return  # All were already confirmed
+
+    # Retrain models for auto-confirmed products
+    if retrain_names:
+        try:
+            train_specific_products(db_path, "products.json", retrain_names)
+        except Exception:
+            pass
+
+    msg = (
+        "\U0001f504 Stok otomatis dikonfirmasi:\n"
+        + "\n".join(auto_confirmed)
+        + "\n\nAda selisih? Kirim \"cek stok [produk] [jumlah]\" besok pagi."
+    )
+    queue_outgoing_message(db_path, OWNER_NUMBER, msg)
+    print(f"[{datetime.now().isoformat()}] Auto-confirmed {len(auto_confirmed)} product(s)")
 
 
 def main() -> None:
@@ -89,8 +155,10 @@ def main() -> None:
     scheduler.add_job(_backup_job, "cron", hour=23, minute=0)
     scheduler.add_job(_depletion_alert_job, "cron", hour=8, minute=0)  # Daily 08:00
     scheduler.add_job(_eod_reminder_job, "cron", hour=20, minute=0)    # Daily 20:00
+    scheduler.add_job(_eod_escalation_job, "cron", hour=21, minute=30)  # Daily 21:30
+    scheduler.add_job(_eod_auto_confirm_job, "cron", hour=23, minute=0)  # Daily 23:00
     scheduler.start()
-    print(f"[{datetime.now()}] Scheduler started. Daily backup at 23:00, alerts at 08:00, EOD reminder at 20:00.")
+    print(f"[{datetime.now()}] Scheduler started. Backup 23:00, alerts 08:00, EOD reminder 20:00, escalation 21:30, auto-confirm 23:00.")
 
     _backup_job()  # Run once at startup
 

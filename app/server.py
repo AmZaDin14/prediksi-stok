@@ -17,9 +17,9 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, queue_outgoing_message, record_confirmation, record_sale
+from app.data import get_daily_sales, get_expected_stock, get_pending_outgoing, get_products_confirmed_today, queue_outgoing_message, record_confirmation, record_sale
 from app.parser import parse_confirmation_message, parse_sales_message
-from app.predictor import PredictionResult, predict_product, train_all_products
+from app.predictor import PredictionResult, predict_product, train_specific_products
 from app.reconciliation import reconcile
 
 # --- Config from environment -------------------------------------------
@@ -74,6 +74,9 @@ async def webhook(msg: WebhookMessage) -> WebhookResponse:
 
     if body in ("help", "bantuan", ""):
         return _handle_help()
+
+    if body in ("ok", "oke"):
+        return _handle_ok_confirmation()
 
     if body.startswith("cek stok"):
         if body == "cek stok":
@@ -225,6 +228,51 @@ def _handle_restock(raw_text: str) -> WebhookResponse:
     )
 
 
+def _build_eod_reminder_body() -> str:
+    """Build a rich EOD reminder with expected stock per product.
+
+    Used by the 20:00 scheduler job and escalation.
+    """
+    products = _load_products()
+    lines: list[str] = ["\U0001f514 Waktunya cek stok!\n", "Expected stok hari ini:"]
+    for name, attrs in products.items():
+        stock = get_expected_stock(DB_PATH, name, initial_stock=float(attrs["initial_stock"]))
+        unit = attrs["unit"]
+        if stock is not None:
+            lines.append(f"  {name}: {stock:.0f} {unit}")
+        else:
+            lines.append(f"  {name}: stok tidak diketahui")
+    lines.append("")
+    lines.append("Balas: \"ok\" jika semua sesuai")
+    lines.append("Atau: gula 25, minyak 950, ...")
+    return "\n".join(lines)
+
+
+def _handle_ok_confirmation() -> WebhookResponse:
+    """Handle 'ok' response — auto-confirm all products with expected stock."""
+    products = _load_products()
+    confirmed: list[str] = []
+    for name, attrs in products.items():
+        stock = get_expected_stock(DB_PATH, name, initial_stock=float(attrs["initial_stock"]))
+        if stock is not None:
+            record_confirmation(DB_PATH, name, stock)
+            confirmed.append(f"✓ {name}: {stock:.0f} {attrs['unit']}")
+        else:
+            confirmed.append(f"❌ {name}: stok tidak diketahui (gunakan 'restock {name.lower()} [jumlah]')")
+
+    # Retrain only confirmed products
+    confirmed_names = [c.split(" ")[1].replace(":", "") for c in confirmed if c.startswith("✓")]
+    if confirmed_names:
+        try:
+            train_specific_products(DB_PATH, PRODUCTS_FILE, confirmed_names)
+        except Exception:
+            pass
+
+    response = "✅ Stok hari ini dikonfirmasi:\n" + "\n".join(confirmed)
+    response += "\n\nAda selisih? Kirim \"cek stok [produk] [jumlah]\" untuk koreksi."
+    return WebhookResponse(status="ok", response=response)
+
+
 def _handle_cek_stok_confirm(raw_text: str) -> WebhookResponse:
     """Process a ``cek stok <product> <qty>`` confirmation message.
 
@@ -270,11 +318,13 @@ def _handle_cek_stok_confirm(raw_text: str) -> WebhookResponse:
                 f"(restok {rec_result.discrepancy:.0f}{unit_display})"
             )
 
-    # Retrain all models after confirmation
-    try:
-        train_all_products(DB_PATH, PRODUCTS_FILE)
-    except Exception:
-        pass
+    # Retrain only confirmed products (not all)
+    confirmed_names = [p[0] for p in result.confirmations]
+    if confirmed_names:
+        try:
+            train_specific_products(DB_PATH, PRODUCTS_FILE, confirmed_names)
+        except Exception:
+            pass
 
     return WebhookResponse(status="ok", response="Stok diperbarui. " + "; ".join(parts))
 

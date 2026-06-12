@@ -218,6 +218,32 @@ def get_forecast_data(
         return []
 
 
+def train_specific_products(
+    db_path: str,
+    products_file: str,
+    product_names: list[str],
+    models_dir: Optional[str] = None,
+) -> None:
+    """Train models for specific products only.
+
+    Generates synthetic data once and trains only the named products.
+    Useful after EOD confirmation to retrain just the confirmed products.
+    """
+    import json
+
+    with open(products_file) as f:
+        products = json.load(f)
+
+    from app.synthetic_data import generate_synthetic_data
+    synthetic = generate_synthetic_data(products, days=90)
+
+    for name in product_names:
+        if name in products:
+            train_product(db_path, products[name], name, synthetic, models_dir=models_dir)
+        else:
+            print(f"[train_specific_products] Unknown product '{name}' — skipped")
+
+
 def train_all_products(
     db_path: str,
     products_file: str,

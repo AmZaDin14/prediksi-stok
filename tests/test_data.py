@@ -10,6 +10,7 @@ from app.data import (
     get_daily_sales,
     get_expected_stock,
     get_last_confirmation,
+    get_products_confirmed_today,
     record_confirmation,
     record_sale,
 )
@@ -366,3 +367,50 @@ class TestRecordConfirmation:
         # tiebreaker.  The second insert has a higher rowid so it should be
         # returned.
         assert result["quantity"] == 25.0
+
+
+# ---------------------------------------------------------------------------
+# get_products_confirmed_today
+# ---------------------------------------------------------------------------
+
+
+class TestGetProductsConfirmedToday:
+    def test_empty_when_no_confirmations(self, db_path):
+        result = get_products_confirmed_today(db_path)
+        assert result == []
+
+    def test_returns_confirmed_product(self, db_path):
+        record_confirmation(db_path, "Gula", 25.0)
+        result = get_products_confirmed_today(db_path)
+        assert result == ["Gula"]
+
+    def test_multiple_products(self, db_path):
+        record_confirmation(db_path, "Gula", 25.0)
+        record_confirmation(db_path, "Minyak", 980.0)
+        result = get_products_confirmed_today(db_path)
+        assert sorted(result) == ["Gula", "Minyak"]
+
+    def test_only_today_not_historical(self, db_path):
+        """Historical confirmations are not counted."""
+        from datetime import date
+        conn = sqlite3.connect(db_path)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS stock_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                product_name TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                snapshot_date TEXT NOT NULL,
+                is_confirmation INTEGER NOT NULL DEFAULT 0
+            );
+        """)
+        # Yesterday's confirmation
+        yesterday = date(2026, 6, 4).isoformat()
+        conn.execute(
+            "INSERT INTO stock_snapshots (product_name, quantity, snapshot_date, is_confirmation) VALUES (?, ?, ?, 1)",
+            ("Gula", 30.0, yesterday),
+        )
+        conn.commit()
+        conn.close()
+
+        result = get_products_confirmed_today(db_path)
+        assert result == []  # Not today

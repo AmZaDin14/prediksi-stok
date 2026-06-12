@@ -38,6 +38,7 @@ writeConnectionStatus('disconnected');
 
 // --- Chrome path (pick the best available) ----------------------------------
 const CHROME_PATHS = [
+    '/usr/bin/google-chrome-stable',
     '/home/amri/.cache/puppeteer/chrome/linux-146.0.7680.153/chrome-linux64/chrome',
     '/home/amri/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome',
 ];
@@ -77,11 +78,30 @@ CLIENT.on('qr', async (qr) => {
 });
 
 // --- Ready event -----------------------------------------------------------
-CLIENT.on('ready', () => {
+CLIENT.on('ready', async () => {
     const phoneNumber = CLIENT.info.wid.user;
     const displayPhone = `+${phoneNumber}`;
     console.log('WhatsApp bot connected:', displayPhone);
     writeConnectionStatus('connected', displayPhone);
+
+    // Patch missing WhatsApp Web function that breaks sendMessage
+    try {
+        const page = CLIENT.puppeteer?.page;
+        if (page) {
+            await page.evaluate(() => {
+                const orig = window.require;
+                window.require = new Proxy(orig, {
+                    get(target, prop) {
+                        if (prop === 'canCheckStatusRankingPosterGating') return () => false;
+                        return target[prop];
+                    },
+                });
+            });
+            console.log('Patched missing WhatsApp Web function');
+        }
+    } catch (err) {
+        console.error('Patch failed (non-critical):', err.message);
+    }
 
     // Start polling outgoing queue every 30 seconds
     setInterval(pollOutgoing, 30000);
@@ -115,14 +135,16 @@ CLIENT.on('message', async (msg) => {
         if (response.ok) {
             const data = await response.json();
             const replyText = data.response || 'No response';
-            await msg.reply(replyText);
+            try {
+                await msg.reply(replyText);
+            } catch (replyErr) {
+                console.error('Failed to send reply:', replyErr.message);
+            }
         } else {
             console.error('Webhook returned HTTP', response.status);
-            await msg.reply('Maaf, terjadi kesalahan pada server.');
         }
     } catch (err) {
         console.error('Error forwarding message to webhook:', err.message);
-        await msg.reply('Maaf, tidak dapat terhubung ke server.');
     }
 });
 

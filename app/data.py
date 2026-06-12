@@ -46,6 +46,24 @@ def _get_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def get_products_confirmed_today(db_path: str) -> list[str]:
+    """Return list of product names already confirmed today."""
+    today = date.today().isoformat()
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT product_name
+            FROM stock_snapshots
+            WHERE is_confirmation = 1 AND date(snapshot_date) = ?
+            """,
+            (today,),
+        ).fetchall()
+        return [r["product_name"] for r in rows]
+    finally:
+        conn.close()
+
+
 def record_sale(db_path: str, product_name: str, quantity: float, timestamp: str) -> None:
     """Insert a sales report.
 
