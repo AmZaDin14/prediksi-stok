@@ -260,3 +260,120 @@ def train_all_products(
 
     for name, config in products.items():
         train_product(db_path, config, name, synthetic, models_dir=models_dir)
+
+
+def compute_accuracy(
+    db_path: str,
+    products_file: str,
+    models_dir: Optional[str] = None,
+    start_date: str = "2026-06-09",
+    end_date: str = "2026-06-11",
+) -> dict[str, dict]:
+    """Compute model accuracy by comparing predicted vs actual daily sales.
+
+    For each product:
+    - Loads the trained Prophet model
+    - Predicts daily sales for *start_date* to *end_date*
+    - Compares with actual sales from the DB
+
+    Returns::
+        {
+            "products": {
+                "Gula": {"mae": 0.8, "mape": 16.0, "bias": 0.3},
+                ...
+            },
+            "avg_mae": 4.2,
+            "avg_mape": 25.0,
+        }
+    """
+    import json
+    import pickle
+    import os
+    from datetime import date, datetime, timedelta
+
+    import pandas as pd
+    from prophet import Prophet
+
+    from app.data import get_daily_sales
+
+    md = models_dir or os.path.join(os.path.dirname(__file__), "..", "data", "models")
+
+    with open(products_file) as f:
+        products = json.load(f)
+
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    total_days = (end - start).days + 1
+
+    results = {}
+
+    for name in products:
+        model_path = os.path.join(md, f"{name}.pkl")
+        if not os.path.exists(model_path) or os.path.getsize(model_path) == 0:
+            continue
+
+        # Actual daily sales
+        actual_rows = get_daily_sales(db_path, name, start_date, end_date)
+        actual_map = {}
+        for r in actual_rows:
+            actual_map[r["sale_date"]] = r["total_quantity"]
+
+        if not actual_map:
+            continue
+
+        # Load model and predict
+        try:
+            with open(model_path, "rb") as f:
+                model = pickle.load(f)
+
+            # Create future dataframe for the prediction window
+            future = model.make_future_dataframe(periods=total_days, freq="D")
+            forecast = model.predict(future)
+
+            # Get daily predictions (take the last `total_days` rows)
+            pred = forecast.tail(total_days)
+            errors = []
+            abs_errors = []
+            pct_errors = []
+
+            for i in range(total_days):
+                d = (start + timedelta(days=i)).isoformat()
+                predicted = float(pred.iloc[i]["yhat"])
+                # Clamp negative predictions to 0
+                predicted = max(0, predicted)
+                actual = actual_map.get(d, 0)
+                if actual > 0 or predicted > 0:
+                    # If both are 0, skip
+                    err = predicted - actual
+                    errors.append(err)
+                    abs_errors.append(abs(err))
+                    if actual > 0:
+                        pct_errors.append(abs(err) / actual * 100)
+
+            if abs_errors:
+                mae = sum(abs_errors) / len(abs_errors)
+                mape = sum(pct_errors) / len(pct_errors) if pct_errors else 0
+                bias = sum(errors) / len(errors)
+                results[name] = {
+                    "mae": round(mae, 1),
+                    "mape": round(mape, 1),
+                    "bias": round(bias, 1),
+                    "samples": len(abs_errors),
+                }
+        except Exception:
+            continue
+
+    # Averages
+    if results:
+        avg_mae = sum(v["mae"] for v in results.values()) / len(results)
+        avg_mape = sum(v["mape"] for v in results.values()) / len(results)
+    else:
+        avg_mae = 0
+        avg_mape = 0
+
+    return {
+        "products": results,
+        "avg_mae": round(avg_mae, 1),
+        "avg_mape": round(avg_mape, 1),
+        "total_products": len(results),
+    }

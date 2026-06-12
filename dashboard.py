@@ -21,7 +21,7 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 from app.data import get_daily_sales, get_expected_stock, record_sale
-from app.predictor import PredictionResult, get_forecast_data, predict_product, train_all_products
+from app.predictor import PredictionResult, compute_accuracy, get_forecast_data, predict_product, train_all_products
 from app.synthetic_data import generate_synthetic_data
 
 # ---------------------------------------------------------------------------
@@ -179,6 +179,31 @@ _CUSTOM_CSS = """
     .dataframe {font-size: 0.85rem;}
     .stDataFrame {border: 1px solid #E5E7EB; border-radius: 8px; overflow: hidden;}
 
+    /* ----- Accuracy metrics ----- */
+    .accuracy-card {
+        background: white;
+        padding: 0.6rem 1rem;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        margin-bottom: 0.3rem;
+    }
+    .accuracy-card .ac-label {font-size: 0.8rem; color: #6B7280; min-width: 100px;}
+    .accuracy-card .ac-mae {font-size: 1rem; font-weight: 700; color: #003D7A; min-width: 60px;}
+    .accuracy-card .ac-mape {font-size: 0.85rem; font-weight: 600; padding: 0.1rem 0.4rem; border-radius: 12px;}
+    .ac-mape.good {background: #DCFCE7; color: #166534;}
+    .ac-mape.ok {background: #FEF3C7; color: #92400E;}
+    .ac-mape.bad {background: #FEE2E2; color: #991B1B;}
+    .accuracy-card .ac-bias {font-size: 0.8rem; color: #9CA3AF;}
+    .accuracy-summary {
+        display: flex; gap: 1.5rem; padding: 0.5rem 0; margin-bottom: 0.8rem;
+    }
+    .accuracy-summary .as-item {text-align: center;}
+    .accuracy-summary .as-value {font-size: 1.3rem; font-weight: 700; color: #003D7A;}
+    .accuracy-summary .as-label {font-size: 0.7rem; color: #6B7280;}
+
     /* ----- Stock table ----- */
     .stock-table {width: 100%; border-collapse: collapse; font-size: 0.85rem;}
     .stock-table th {background: #003D7A; color: white; padding: 0.6rem 0.8rem; text-align: left; font-weight: 600;}
@@ -210,6 +235,15 @@ _CUSTOM_CSS = """
             .badge-urgent {background: #7F1D1D; color: #FCA5A5;}
             .badge-estimasi {background: #1E3A5F; color: #93C5FD;}
             .bar-bg {background: #374151 !important;}
+            .accuracy-card {background: #1E2028; box-shadow: 0 1px 4px rgba(0,0,0,0.2);}
+            .accuracy-card .ac-label {color: #9CA3AF;}
+            .accuracy-card .ac-mae {color: #60A5FA;}
+            .accuracy-card .ac-bias {color: #6B7280;}
+            .ac-mape.good {background: #064E3B; color: #6EE7B7;}
+            .ac-mape.ok {background: #78350F; color: #FDE68A;}
+            .ac-mape.bad {background: #7F1D1D; color: #FCA5A5;}
+            .accuracy-summary .as-value {color: #60A5FA;}
+            .accuracy-summary .as-label {color: #9CA3AF;}
             .stock-table td {border-bottom-color: #374151;}
             .stock-table tr:hover {background: #1F2937;}
         }
@@ -427,6 +461,43 @@ with tab_dash:
         else:
             wa_html = '<div class="wa-status wa-disconnected">❌ WhatsApp Terputus</div>'
         st.markdown(wa_html, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- Accuracy Metrics ---
+    st.markdown("### 🎯 Akurasi Model")
+    with st.spinner("Menghitung akurasi..."):
+        acc = compute_accuracy(str(DB_PATH), str(PRODUCTS_PATH), models_dir=str(MODELS_DIR))
+    products_acc = acc["products"]
+    avg_mape = acc["avg_mape"]
+
+    if products_acc:
+        # Summary bar
+        mape_class = "good" if avg_mape < 15 else "ok" if avg_mape < 30 else "bad"
+        st.markdown(
+            f'<div class="accuracy-summary">'
+            f'  <div class="as-item"><div class="as-value">{len(products_acc)}</div><div class="as-label">Produk</div></div>'
+            f'  <div class="as-item"><div class="as-value">{acc["avg_mae"]}</div><div class="as-label">Rata² MAE</div></div>'
+            f'  <div class="as-item"><div class="as-value" style="color:#{"10B981" if avg_mape < 15 else "F59E0B" if avg_mape < 30 else "EF4444"}">{avg_mape}%</div><div class="as-label">Rata² MAPE</div></div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        # Per-product rows
+        for pname in sorted(products_acc.keys()):
+            p = products_acc[pname]
+            mc = "good" if p["mape"] < 15 else "ok" if p["mape"] < 30 else "bad"
+            bias_arrow = "▲" if p["bias"] > 0 else "▼" if p["bias"] < 0 else "→"
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'  <div class="ac-label">{pname}</div>'
+                f'  <div class="ac-mae">MAE {p["mae"]}</div>'
+                f'  <div class="ac-mape {mc}">{p["mape"]}%</div>'
+                f'  <div class="ac-bias">{bias_arrow} {abs(p["bias"]):.1f}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.info("Akurasi belum tersedia — minimal 3 hari data real diperlukan.")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
