@@ -184,10 +184,8 @@ _CUSTOM_CSS = """
 
 def _render_header() -> None:
     """Render Teknokrat-branded header."""
-    # Render CSS once
     st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
 
-    # Header layout with logo + text columns
     cols = st.columns([1, 5])
     with cols[0]:
         if LOGO_PATH.exists():
@@ -197,10 +195,12 @@ def _render_header() -> None:
     with cols[1]:
         st.markdown(
             """
-            <div class="header-text">
-                <h1>Sistem Prediksi Stok</h1>
-                <p class="subtitle">AI-based Inventory Prediction System</p>
-                <p class="univ">Universitas Teknokrat Indonesia</p>
+            <div class="header-banner" style="padding: 0.6rem 1.5rem;">
+                <div class="header-text">
+                    <h1>Sistem Prediksi Stok</h1>
+                    <p class="subtitle">AI-based Inventory Prediction System</p>
+                    <p class="univ">Universitas Teknokrat Indonesia</p>
+                </div>
             </div>
             """,
             unsafe_allow_html=True,
